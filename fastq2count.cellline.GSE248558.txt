@@ -1,0 +1,151 @@
+#Download 'GSE248558'
+#first install anaconda if it in not (update the link for updated versions)-----------------
+#wget https://repo.anaconda.com/archive/Anaconda3-2023.09-0-Linux-x86_64.sh
+#bash Anaconda3-2023.09-0-Linux-x86_64.sh
+#creat new env and name it---
+#conda create -n env2023 python=3.11
+
+conda activate env2023
+
+#install if not --------------------
+#conda install -c bioconda samtools=2.35
+#conda install -c bioconda cutadapt=3.5
+#conda install -c bioconda fastqc=0.12.1
+#conda install -c bioconda star=2.5.2b
+#conda install -c bioconda rsem=1.3.3    #don't
+#conda install -c bioconda subread=2.0.1 #don't
+#conda install -c bioconda multiqc=2.35
+
+
+#fastqc-----------------------
+conda activate env2023
+cd data
+mkdir FASTQC
+
+output=FASTQC
+for file in *.gz
+do
+fastqc -f fastq -o ${output} ${file}
+echo ${file}
+done
+
+#multiQC-----------
+cd
+cd data
+
+multiqc FASTQC/.
+
+#cutadapt-------------------------
+#https://cutadapt.readthedocs.io/en/v2.10/guide.html#filtering
+conda activate env2023
+cd data
+mkdir Cutadapt
+
+ls *_L003_R1.fastq.gz > samples.txt
+cat samples.txt | rev | cut -c18- | rev > samples1.txt
+cat samples1.txt > samples.txt
+rm samples1.txt
+
+samples=$(cat samples.txt)
+output=Cutadapt/
+for file in $samples 
+do
+cutadapt -j 0 -u 12 -U 12 -q 20 -m 10:10 \
+-a AGATCGGAAGAGCACACGTCTGAACTCCAGTCA \
+-A AGATCGGAAGAGCGTCGTGTAGGGAAAGAGTGT \
+-b CTGTCTCTTATACACATCT \
+-B CTGTCTCTTATACACATCT \
+-b AGATGTGTATAAGAGACAG \
+-B AGATGTGTATAAGAGACAG \
+-g AATGATACGGCGACCACCGAGATCTACACTCTTTCCCTACACGACGCTCTTCCGATCT \
+-G AATGATACGGCGACCACCGAGATCTACACTCTTTCCCTACACGACGCTCTTCCGATCT \
+-g GATCGGAAGAGCACACGTCTGAACTCCAGTCAC \
+-G GATCGGAAGAGCACACGTCTGAACTCCAGTCAC \
+-pair-filter=both \
+-o "${output}${file}".trim.R1.fastq \
+-p "${output}${file}".trim.R2.fastq \
+"${file}"_L003_R1.fastq.gz "${file}"_L003_R2.fastq.gz
+done
+
+#fastqc after trimming-----------------------
+conda activate env2023
+cd data
+
+mkdir Cutadapt/FASTQCresults
+
+samples=$(cat samples.txt)
+output=Cutadapt/FASTQCresults/
+for file in $samples
+do
+fastqc Cutadapt/"${file}".trim.R1.fastq Cutadapt/"${file}".trim.R2.fastq -o "${output}"
+done
+
+#multiQC-----------
+conda activate env2023
+cd data
+
+multiqc Cutadapt/FASTQCresults/.
+
+# mapping with STAR-------------------
+#https://physiology.med.cornell.edu/faculty/skrabanek/lab/angsd/lecture_notes/STARmanual.pdf
+conda activate env2023
+cd data
+mkdir genome
+cd genome
+
+wget ftp://ftp.ebi.ac.uk/pub/databases/gencode/Gencode_human/release_44/GRCh38.primary_assembly.genome.fa.gz
+wget ftp://ftp.ebi.ac.uk/pub/databases/gencode/Gencode_human/release_44/gencode.v44.primary_assembly.annotation.gtf.gz
+gunzip GRCh38.primary_assembly.genome.fa.gz
+gunzip gencode.v44.primary_assembly.annotation.gtf.gz
+
+mkdir -p genomeDir
+cd ..
+
+#Creating a genome index
+
+STAR --runThreadN 12 \
+--runMode genomeGenerate \
+--genomeDir genome/genomeDir \
+--genomeFastaFiles genome/GRCh38.primary_assembly.genome.fa \
+--sjdbGTFfile genome/gencode.v44.primary_assembly.annotation.gtf \
+--sjdbOverhang 138 #max lenght of reads -1
+
+#Aligning reads--------------------------
+#https://physiology.med.cornell.edu/faculty/skrabanek/lab/angsd/lecture_notes/STARmanual.pdf
+cd data
+mkdir STAR
+
+samples=$(cat samples.txt)
+for file in $samples
+do
+STAR --genomeDir genome/genomeDir \
+--runThreadN 12 \
+--readFilesIn Cutadapt/${file}.trim.R1.fastq Cutadapt/${file}.trim.R2.fastq \
+--outFileNamePrefix STAR/${file} \
+--outSAMtype None \
+--quantMode GeneCounts
+done
+
+
+#Make count data -------------------------------
+cd data
+sudo apt install moreutils
+sudo apt install parallel
+cd STAR 
+ls -1  *ReadsPerGene.out.tab | parallel 'cat {} | sed '1d' | cut -f2 {} > {/.}_clean.txt'
+ls -1  *ReadsPerGene.out.tab | head -1 | xargs cut -f1 > genes.txt
+paste genes.txt *_clean.txt > output_unstranded.txt
+ls -1  *ReadsPerGene.out.tab | parallel 'cat {} | sed '1d' | cut -f3 {} > {/.}_clean.txt'
+ls -1  *ReadsPerGene.out.tab | head -1 | xargs cut -f1 > genes.txt
+paste genes.txt *_clean.txt > output_stranded.txt
+ls -1  *ReadsPerGene.out.tab | parallel 'cat {} | sed '1d' | cut -f4 {} > {/.}_clean.txt'
+ls -1  *ReadsPerGene.out.tab | head -1 | xargs cut -f1 > genes.txt
+paste genes.txt *_clean.txt > output_Reverse_stranded.txt
+ls -1  *ReadsPerGene.out.tab >Colnames.txt
+
+#Quality check with MultiQC---------------
+cd data
+cd STAR
+
+multiqc .
+

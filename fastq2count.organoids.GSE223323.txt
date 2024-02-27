@@ -1,0 +1,427 @@
+#first install anaconda if it in not-----------------
+#creat new env and name it
+#conda create -n ega python=3.6
+
+conda activate ega
+
+#install if not --------------------
+#conda install -c bioconda samtools=1.7
+#conda install -c bioconda cutadapt=1.18
+#conda install -c bioconda fastqc=0.11.9
+#conda install -c bioconda star=2.7.4a
+#conda install -c bioconda rsem=1.3.3
+#conda install -c bioconda subread=2.0.1
+#conda install -c bioconda multiqc=1.9
+
+
+
+# Download data in GSE223323 (not scriptted)---------------------
+#####################################################################################
+# batch 1 (Samples with names starting by 'AK')--------------------------------------
+#merge seperated samples-------------------
+conda activate ega
+cd
+cd data
+mkdir Merge
+
+for file in {1..60}
+do
+cat AK-${file}_* > Merge/AK-${file}.fastq.gz
+echo ${file}
+done
+#delete zero size files
+
+for file in {1..60}
+do
+cat AK${file}_* > Merge/AK${file}.fastq.gz
+echo ${file}
+done
+#delete zero size files
+#manualy rename AK${file}.fastq.gz to AK-${file}.fastq.gz in merge folder
+
+#fastqc-----------------------
+conda activate ega
+cd
+cd data
+mkdir FASTQC
+
+output=FASTQC
+for file in Merge/*.gz
+do
+fastqc -f fastq -o ${output} ${file}
+echo ${file}
+done
+
+#multiQC-----------
+cd
+cd data
+
+multiqc FASTQC/.
+
+#cutadapt-------------------------
+#https://cutadapt.readthedocs.io/en/v2.10/guide.html#filtering
+conda activate ega
+cd
+cd data/Merge
+mkdir Cutadapt
+
+output=Cutadapt/
+for file in *.gz 
+  do
+    cutadapt -j 0 -u 12 -q 20 -m 20 \
+    -a ATCTCGTATGCCGTCTTCTGCTTG \
+    -g GATCGGAAGAGCACACGTCTGAACTCCAGTCAc \
+    -b AATGATACGGCGACCACCGAGATCTACACTCTTTCCCTACACGACGCTCTTCCGATCT \
+    -o "${output}trim.${file}" \
+    ${file}
+  done
+
+
+#fastqc after trimming-----------------------
+conda activate ega
+cd
+cd data/Merge
+mkdir FASTQCtrim
+
+output=FASTQCtrim
+for file in Cutadapt/*.gz
+do
+fastqc -f fastq -o ${output} ${file}
+echo ${file}
+done
+
+#multiQC-----------
+cd
+cd data/Merge
+
+multiqc FASTQCtrim/.
+
+# mapping with STAR-------------------
+cd data/Merge
+mkdir genome
+cd genome
+wget ftp://ftp.ebi.ac.uk/pub/databases/gencode/Gencode_mouse/release_M25/GRCm38.primary_assembly.genome.fa.gz
+wget ftp://ftp.ebi.ac.uk/pub/databases/gencode/Gencode_mouse/release_M25/gencode.vM25.primary_assembly.annotation.gtf.gz
+gunzip GRCm38.primary_assembly.genome.fa.gz
+gunzip gencode.vM25.primary_assembly.annotation.gtf.gz
+mkdir -p genomeDir
+
+
+#Creating a genome index
+cd
+cd data/Merge
+
+STAR --runThreadN 12 \
+--runMode genomeGenerate \
+--genomeDir genome/genomeDir \
+--genomeFastaFiles genome/GRCm38.primary_assembly.genome.fa \
+--sjdbGTFfile genome/gencode.vM25.primary_assembly.annotation.gtf \
+--sjdbOverhang 38 #max lenght of reads -1
+
+
+
+#Aligning reads
+cd
+cd data/Merge
+mkdir STAR
+
+for file in Cutadapt/*.gz
+do
+STAR --genomeDir genome/genomeDir \
+--runThreadN 12 \
+--readFilesIn ${file} \
+--readFilesCommand gunzip -c \
+--outFileNamePrefix STAR/${file} \
+--outSAMtype None \#--outSAMtype BAM SortedByCoordinate \ #--outSAMunmapped Within \
+--quantMode GeneCounts #--outReadsUnmapped Fastx \#--peOverlapNbasesMin 5 \#--peOverlapMMp 0.2 \
+done
+
+
+
+#conda brocken!------------
+#conda env remove -n ega
+#conda create -n ega python=3.6
+conda activate ega
+#conda install -c bioconda samtools=1.7
+#conda install -c bioconda cutadapt=2.10
+#conda install -c bioconda fastqc=0.11.9
+#conda install -c bioconda star=2.7.5b
+#conda install -c bioconda rsem=1.3.3
+#conda install -c bioconda subread=2.0.1
+#conda install -c bioconda multiqc=1.9
+
+
+#Make count data -------------------------------
+cd
+cd data/Merge/STAR/Cutadapt 
+ls -1  *ReadsPerGene.out.tab | parallel 'cat {} | sed '1d' | cut -f2 {} > {/.}_clean.txt'
+ls -1  *ReadsPerGene.out.tab | head -1 | xargs cut -f1 > genes.txt
+paste genes.txt *_clean.txt > output_unstranded.txt
+ls -1  *ReadsPerGene.out.tab | parallel 'cat {} | sed '1d' | cut -f3 {} > {/.}_clean.txt'
+ls -1  *ReadsPerGene.out.tab | head -1 | xargs cut -f1 > genes.txt
+paste genes.txt *_clean.txt > output_stranded.txt
+ls -1  *ReadsPerGene.out.tab | parallel 'cat {} | sed '1d' | cut -f4 {} > {/.}_clean.txt'
+ls -1  *ReadsPerGene.out.tab | head -1 | xargs cut -f1 > genes.txt
+paste genes.txt *_clean.txt > output_Reverse_stranded.txt
+ls -1  *ReadsPerGene.out.tab >Colnames.txt
+
+#Quality check with MultiQC---------------
+cd
+cd data/Merge/STAR/Cutadapt 
+
+multiqc .
+############################################################################################
+# batch 2(Samples with names starting by 'R', paired-end)-----------------------------------
+
+#fastqc-----------------------
+conda activate ega
+cd
+cd data
+mkdir FASTQC
+
+output=FASTQC
+for file in *.gz
+do
+fastqc -f fastq -o ${output} ${file}
+echo ${file}
+done
+
+#multiQC-----------
+cd
+cd data
+
+multiqc FASTQC/.
+
+#cutadapt-------------------------
+#https://cutadapt.readthedocs.io/en/v2.10/guide.html#filtering
+conda activate ega
+cd
+cd data
+mkdir Cutadapt
+
+output=Cutadapt/
+for file in *.gz 
+  do
+    cutadapt -j 0 -u 12 -q 20 -m 20 \
+    -a ATCTCGTATGCCGTCTTCTGCTTG \
+    -g GATCGGAAGAGCACACGTCTGAACTCCAGTCAc \
+    -b AATGATACGGCGACCACCGAGATCTACACTCTTTCCCTACACGACGCTCTTCCGATCT \
+    -o "${output}trim.${file}" \
+    ${file}
+  done
+
+
+#fastqc after trimming-----------------------
+conda activate ega
+cd
+cd data
+mkdir FASTQCtrim
+
+output=FASTQCtrim
+for file in Cutadapt/*.gz
+do
+fastqc -f fastq -o ${output} ${file}
+echo ${file}
+done
+
+#multiQC-----------
+cd
+cd data
+
+multiqc FASTQCtrim/.
+
+# mapping with STAR-------------------
+cd data
+mkdir genome
+cd genome
+wget ftp://ftp.ebi.ac.uk/pub/databases/gencode/Gencode_mouse/release_M25/GRCm38.primary_assembly.genome.fa.gz
+wget ftp://ftp.ebi.ac.uk/pub/databases/gencode/Gencode_mouse/release_M25/gencode.vM25.primary_assembly.annotation.gtf.gz
+gunzip GRCm38.primary_assembly.genome.fa.gz
+gunzip gencode.vM25.primary_assembly.annotation.gtf.gz
+mkdir -p genomeDir
+
+
+#Creating a genome index
+cd
+cd data
+
+STAR --runThreadN 12 \
+--runMode genomeGenerate \
+--genomeDir genome/genomeDir \
+--genomeFastaFiles genome/GRCm38.primary_assembly.genome.fa \
+--sjdbGTFfile genome/gencode.vM25.primary_assembly.annotation.gtf \
+--sjdbOverhang 38 #max lenght of reads -1
+
+
+
+#Aligning reads
+cd
+cd data
+mkdir STAR
+
+for file in Cutadapt/*.gz
+do
+STAR --genomeDir genome/genomeDir \
+--runThreadN 12 \
+--readFilesIn ${file} \
+--readFilesCommand gunzip -c \
+--outFileNamePrefix STAR/${file} \
+--outSAMtype None \#--outSAMtype BAM SortedByCoordinate \ #--outSAMunmapped Within \
+--quantMode GeneCounts #--outReadsUnmapped Fastx \#--peOverlapNbasesMin 5 \#--peOverlapMMp 0.2 \
+done
+
+
+#Make count data -------------------------------
+cd
+cd data/STAR/Cutadapt 
+ls -1  *ReadsPerGene.out.tab | parallel 'cat {} | sed '1d' | cut -f2 {} > {/.}_clean.txt'
+ls -1  *ReadsPerGene.out.tab | head -1 | xargs cut -f1 > genes.txt
+paste genes.txt *_clean.txt > output_unstranded.txt
+ls -1  *ReadsPerGene.out.tab | parallel 'cat {} | sed '1d' | cut -f3 {} > {/.}_clean.txt'
+ls -1  *ReadsPerGene.out.tab | head -1 | xargs cut -f1 > genes.txt
+paste genes.txt *_clean.txt > output_stranded.txt
+ls -1  *ReadsPerGene.out.tab | parallel 'cat {} | sed '1d' | cut -f4 {} > {/.}_clean.txt'
+ls -1  *ReadsPerGene.out.tab | head -1 | xargs cut -f1 > genes.txt
+paste genes.txt *_clean.txt > output_Reverse_stranded.txt
+ls -1  *ReadsPerGene.out.tab >Colnames.txt
+
+#Quality check with MultiQC---------------
+cd
+cd data/STAR/Cutadapt 
+
+multiqc .
+#####################################################################################
+# batch 3 (Samples with names starting by 'VW')--------------------------------------
+#merge seperated samples-------------------
+#conda activate ega
+#cd
+#cd data
+#mkdir Merge
+
+#for file in {1..36}
+#do
+#cat VW-${file}_* > Merge/VW-${file}.fastq.gz
+#echo ${file}
+#done
+
+#fastqc-----------------------
+conda activate ega
+cd
+cd data
+mkdir FASTQC
+
+output=FASTQC
+for file in *.gz
+do
+fastqc -f fastq -o ${output} ${file}
+echo ${file}
+done
+
+#multiQC-----------
+cd
+cd data
+
+multiqc FASTQC/.
+
+#cutadapt-------------------------
+#https://cutadapt.readthedocs.io/en/v2.10/guide.html#filtering
+conda activate ega
+cd
+cd data
+mkdir Cutadapt
+
+output=Cutadapt/
+for file in *.gz 
+  do
+    cutadapt -j 0 -u 12 -q 20 -m 20 \
+    -a ATCTCGTATGCCGTCTTCTGCTTG \
+    -g GATCGGAAGAGCACACGTCTGAACTCCAGTCAc \
+    -b AATGATACGGCGACCACCGAGATCTACACTCTTTCCCTACACGACGCTCTTCCGATCT \
+    -o "${output}trim.${file}" \
+    ${file}
+  done
+
+
+#fastqc after trimming-----------------------
+conda activate ega
+cd
+cd data
+mkdir FASTQCtrim
+
+output=FASTQCtrim
+for file in Cutadapt/*.gz
+do
+fastqc -f fastq -o ${output} ${file}
+echo ${file}
+done
+
+#multiQC-----------
+cd
+cd data
+
+multiqc FASTQCtrim/.
+
+# mapping with STAR-------------------
+cd data
+mkdir genome
+cd genome
+wget ftp://ftp.ebi.ac.uk/pub/databases/gencode/Gencode_mouse/release_M25/GRCm38.primary_assembly.genome.fa.gz
+wget ftp://ftp.ebi.ac.uk/pub/databases/gencode/Gencode_mouse/release_M25/gencode.vM25.primary_assembly.annotation.gtf.gz
+gunzip GRCm38.primary_assembly.genome.fa.gz
+gunzip gencode.vM25.primary_assembly.annotation.gtf.gz
+mkdir -p genomeDir
+
+
+#Creating a genome index
+cd
+cd data
+
+STAR --runThreadN 12 \
+--runMode genomeGenerate \
+--genomeDir genome/genomeDir \
+--genomeFastaFiles genome/GRCm38.primary_assembly.genome.fa \
+--sjdbGTFfile genome/gencode.vM25.primary_assembly.annotation.gtf \
+--sjdbOverhang 38 #max lenght of reads -1
+
+
+
+#Aligning reads
+cd
+cd data
+mkdir STAR
+
+for file in Cutadapt/*.gz
+do
+STAR --genomeDir genome/genomeDir \
+--runThreadN 12 \
+--readFilesIn ${file} \
+--readFilesCommand gunzip -c \
+--outFileNamePrefix STAR/${file} \
+--outSAMtype None \#--outSAMtype BAM SortedByCoordinate \ #--outSAMunmapped Within \
+--quantMode GeneCounts #--outReadsUnmapped Fastx \#--peOverlapNbasesMin 5 \#--peOverlapMMp 0.2 \
+done
+
+
+#Make count data -------------------------------
+cd
+cd data/STAR/Cutadapt 
+ls -1  *ReadsPerGene.out.tab | parallel 'cat {} | sed '1d' | cut -f2 {} > {/.}_clean.txt'
+ls -1  *ReadsPerGene.out.tab | head -1 | xargs cut -f1 > genes.txt
+paste genes.txt *_clean.txt > output_unstranded.txt
+ls -1  *ReadsPerGene.out.tab | parallel 'cat {} | sed '1d' | cut -f3 {} > {/.}_clean.txt'
+ls -1  *ReadsPerGene.out.tab | head -1 | xargs cut -f1 > genes.txt
+paste genes.txt *_clean.txt > output_stranded.txt
+ls -1  *ReadsPerGene.out.tab | parallel 'cat {} | sed '1d' | cut -f4 {} > {/.}_clean.txt'
+ls -1  *ReadsPerGene.out.tab | head -1 | xargs cut -f1 > genes.txt
+paste genes.txt *_clean.txt > output_Reverse_stranded.txt
+ls -1  *ReadsPerGene.out.tab >Colnames.txt
+
+#manually transfer  output_Reverse_stranded.txt, output_stranded.txt, output_unstranded.txt and Colnames.txt
+#Quality check with MultiQC---------------
+cd
+cd data/STAR/Cutadapt 
+
+multiqc .
+
+
+
