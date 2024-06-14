@@ -20,7 +20,7 @@ names(pw)=c("Fructose, mannose","Galactose","Glutamine","Glutathione","Nitrogen"
 # Single-cell transcriptome analysis reveals differential nutrient absorption functions in human intestine. 
 # J Exp Med. 2020 Feb 3;217(2):e20191130. doi: 10.1084/jem.20191130. PMID: 31753849; PMCID: PMC7041720.
 # Table S2
-sig=data.frame(readxl::read_excel(paste0(my.data.dir,"scRNAseq.Colon.GSE125970/jem_20191130_tables2.xlsx"),sheet = "rectum"))
+sig=data.frame(readxl::read_excel(paste0(PathToData,"jem_20191130_tables2.xlsx"),sheet = "rectum"))
 pw2=list()
 for (i in 1:length(unique(sig$cluster))) {
   pw2[[i]]=sig$gene[sig$cluster==unique(sig$cluster)[i]]
