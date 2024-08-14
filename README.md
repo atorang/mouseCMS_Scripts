@@ -40,12 +40,12 @@ In the final files both count data and normalized data are available:
 * Datasets: scRNAseq.colon.GSE125970.RData, msigdb.v7.4.symbols.gmt
 ### GSEA in mouse organoids: 
 * Scripts: Fig.4A.Genotype.Cell.All.R, Fig.3C.gsplot.cms.R
-* Datasets: organoids.RData, Haber.Combine.All.xlsx, Synapse.genesets.gmt, 				msigdb.v7.4.symbols.gmt
+* Datasets: organoids.RData, Haber.Combine.All.xlsx, Synapse.genesets.gmt, msigdb.v7.4.symbols.gmt
 ### DE analysis in wild type colon and small intestine organoids:
 * Scripts: Fig.S2.R
-* Datasets: GSE146476_Intestinal-region-specific-Wnt-signalling_gene_counts.txt  			organoids.RData
+* Datasets: GSE146476_Intestinal-region-specific-Wnt-signalling_gene_counts.txt, organoids.RData
 ### CMS classifier for mouse models: 
-* Scripts: First.CMS.Stratification.R, Training.Mouse.Classifier.R, Fig.S3DE.Classifier.Coef.R, 		https://github.com/atorang/mouseCMS
+* Scripts: First.CMS.Stratification.R, Training.Mouse.Classifier.R, Fig.S3DE.Classifier.Coef.R, https://github.com/atorang/mouseCMS
 * Datasets:  organoids.RData, Synapse.genesets.gmt, msigdb.v7.4.symbols.gmt 
 ### CMS stratification of mouse organoids: 
 * Scripts: Fig.3B.classification.R, https://github.com/atorang/mouseCMS
